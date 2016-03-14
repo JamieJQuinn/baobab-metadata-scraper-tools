@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[39]:
+# In[52]:
 
 from pymarc import Record, Field, XMLWriter
 import os
@@ -11,10 +11,10 @@ import uuid
 import json
 import sys
 
-DEBUG = True
+DEBUG = False
 
 
-# In[40]:
+# In[53]:
 
 def loadMapping(mapFile = ""):
     # Maps the index to the field in the csv file. Eg, if field A or 0 is the publisher, mapping[0] is the\
@@ -25,7 +25,7 @@ def loadMapping(mapFile = ""):
     # Sample Astral Mapping:
     # mapping = ["260b", "", "020a", "", "245a", "250a", "100a", "260c", "072a", "520a", "260a", "", "041a", "365b", "365c"]
 
-    mapping = ["260b", "245a", "020a", "250a", "100a", "260c", "" "365b", "365c", "260a", "", "500a", "", "", "520a", "505a", "041a", "942c"]
+    mapping = ["260b", "245a", "020a", "250a", "100a", "260c", "" "365b", "365c", "260a",               "", "500a", "", "", "520a", "505a", "041a", "942c"]
     
     if mapFile:
         try:
@@ -45,7 +45,7 @@ def loadMapping(mapFile = ""):
     
 
 
-# In[41]:
+# In[54]:
 
 def writeMARCXML(record, filename):
     # Write out record in MARCXML format
@@ -54,7 +54,7 @@ def writeMARCXML(record, filename):
     writer.close()  # Important!
 
 
-# In[42]:
+# In[55]:
 
 def addField(record, key, sf):
     # record is the pymarc record, 
@@ -78,14 +78,12 @@ def addField(record, key, sf):
     ))
 
 
-# In[43]:
+# In[56]:
 
 def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
     # mapping as defined in mapping function loadMapping
     # sheet is the specific excel sheet that contains the data we're extracting
     # rowsToIgnore is the number of rows at top of sheet that we don't care about
-    
-    
     for row in sheet.rows[rowsToIgnore:]:
         record = Record()
         # for every key in our map
@@ -93,22 +91,6 @@ def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
             # if the key isn't empty (i.e. we're not mapping that column)
             if key:
                 addField(record, key, [key[3], unicode(row[i].value)])
-#                 if key[:3] == "365":
-#                     # Dealing with currency
-#                     if '365' in record:
-#                         # Field already exists and contains something
-#                         if key[-1] not in record['365']:
-#                             # Field doesn't already contain this type of input
-#                             record['365'][key[-1]] = unicode(row[i].value)
-#                             continue
-                        
-#                 # Add field to record
-#                 record.add_field(
-#                     Field(
-#                         tag = key[:3], # Grab only field number e.g. |520|b
-#                         indicators = ['0', '0'],
-#                         subfields = [key[3], unicode(row[i].value)]
-#                     ))
         if DEBUG:
             print record.title()
             
@@ -120,34 +102,12 @@ def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
         writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
 
 
-# In[44]:
-
-def formatNumber(n):
-    # n is an incoming float
-    if int(n) == n:
-        # n must be an int
-        return int(n)
-    else:
-        return n
-
-
-# In[45]:
-
-def test_formatNumber():
-    testCases = [1000.0, 1234.0, 0.1, 0.001]
-    for case in testCases:
-        print formatNumber(case)
-
-#test_formatNumber()
-
-
-# In[46]:
+# In[59]:
 
 def handleXLS(mapping, sheet, outputFolder, rowsToIgnore):
     # mapping as defined in mapping function loadMapping
     # sheet is the specific excel sheet that contains the data we're extracting
     # rowsToIgnore is the number of rows at top of sheet that we don't care about
-    
     for rowCount in xrange(rowsToIgnore, sheet.nrows):
         record = Record()
         for i, key in enumerate(mapping):
@@ -162,7 +122,6 @@ def handleXLS(mapping, sheet, outputFolder, rowsToIgnore):
                     # keep as string
                     sf = [key[3], unicode(sheet.row(rowCount)[i].value)]
                 ################################################################
-                #sf = [key[3], unicode(sheet.row(rowCount)[i].value)]
                 # Then add to record
                 addField(record, key, sf)
 
@@ -174,15 +133,38 @@ def handleXLS(mapping, sheet, outputFolder, rowsToIgnore):
         writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
 
 
-# In[48]:
+# In[57]:
+
+def formatNumber(n):
+    # n is some incoming float
+    if int(n) == n:
+        # n must actually be an int
+        return int(n)
+    else:
+        # n is just a float
+        return n
+
+
+# In[58]:
+
+def test_formatNumber():
+    testCases = [1000.0, 1234.0, 0.1, 0.001]
+    for case in testCases:
+        print formatNumber(case)
+
+#test_formatNumber()
+
+
+# In[60]:
 
 def main():
     if DEBUG:
         print "WARNING: In DEBUG mode"
         rowsToIgnore = 1
-        excelFilename = './test/BaobabMetadataTemplate.xls'
+        excelFilename = './test/BaobabMetadataTemplate.xlsx'
         outputFolder = './test/templateConversionXML/'
         mappingFilename = './test/BaobabMetadataTemplateMapping.json'
+        sheetName = 'Sheet1'
     
     # Deal with arguments
     if not DEBUG:
@@ -199,11 +181,13 @@ def main():
                 excelFilename = sys.argv[i+1]
             elif arg == '-o':
                 outputFolder = sys.argv[i+1]
+            elif arg == '-s':
+                sheetName = sys.argv[i+1]
         
     
     # Get mapping
-    #mapping = loadMapping(mappingFilename)
-    mapping = loadMapping()
+    mapping = loadMapping(mappingFilename)
+    #mapping = loadMapping()
     # Open excel file
     if excelFilename.split(".")[-1] == "xlsx":
         try:
@@ -211,7 +195,7 @@ def main():
         except:
             print excelFilename + " is not found or not a valid .xlsx file."
             return
-        sheet = wb[wb.get_sheet_names()[0]]
+        sheet = wb[sheetName]
         handleXLSX(mapping, sheet, outputFolder, rowsToIgnore)
     elif excelFilename.split(".")[-1] == "xls":
         try:

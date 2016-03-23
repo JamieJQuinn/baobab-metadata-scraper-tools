@@ -132,8 +132,10 @@ def main():
     # Open excel file
     if excelFilename.split(".")[-1] == "xlsx":
         try:
-            wb = openpyxl.load_workbook(filename = excelFilename, read_only=True)
+            wb = openpyxl.load_workbook(filename = excelFilename)
         except:
+            e = sys.exc_info()[1]
+            print e
             print excelFilename + " is not found or not a valid .xlsx file."
             return
         sheet = wb[sheetName]

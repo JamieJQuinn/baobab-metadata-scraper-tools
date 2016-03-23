@@ -1,20 +1,12 @@
 
-# coding: utf-8
-
-# In[52]:
-
 from pymarc import Record, Field, XMLWriter
 import os
 import openpyxl
-import xlrd
 import uuid
 import json
 import sys
 
 DEBUG = False
-
-
-# In[53]:
 
 def loadMapping(mapFile = ""):
     # Maps the index to the field in the csv file. Eg, if field A or 0 is the publisher, mapping[0] is the\
@@ -42,19 +34,12 @@ def loadMapping(mapFile = ""):
             return []
     
     return mapping
-    
-
-
-# In[54]:
 
 def writeMARCXML(record, filename):
     # Write out record in MARCXML format
     writer = XMLWriter(open(filename,'wb'))
     writer.write(record)
     writer.close()  # Important!
-
-
-# In[55]:
 
 def addField(record, key, sf):
     # record is the pymarc record, 
@@ -77,9 +62,6 @@ def addField(record, key, sf):
         subfields = sf
     ))
 
-
-# In[56]:
-
 def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
     # mapping as defined in mapping function loadMapping
     # sheet is the specific excel sheet that contains the data we're extracting
@@ -101,40 +83,6 @@ def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
         # Write out our marcxml for each row
         writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
 
-
-# In[59]:
-
-def handleXLS(mapping, sheet, outputFolder, rowsToIgnore):
-    # mapping as defined in mapping function loadMapping
-    # sheet is the specific excel sheet that contains the data we're extracting
-    # rowsToIgnore is the number of rows at top of sheet that we don't care about
-    for rowCount in xrange(rowsToIgnore, sheet.nrows):
-        record = Record()
-        for i, key in enumerate(mapping):
-            # if the key isn't empty
-            if key:
-                ########### HACK TO GET AROUND XLS NUMBER STORAGE ##############
-                # If field is an integer
-                if sheet.row(rowCount)[i].ctype == 2 or sheet.row(rowCount)[i].ctype == 3:
-                    # Convert to integer before inputting
-                    sf = [key[3], unicode(formatNumber(sheet.row(rowCount)[i].value))]
-                else:
-                    # keep as string
-                    sf = [key[3], unicode(sheet.row(rowCount)[i].value)]
-                ################################################################
-                # Then add to record
-                addField(record, key, sf)
-
-        # Create unique UUID
-        bookUUID = str(uuid.uuid1())
-        record.add_field(Field(tag='001', data=bookUUID))
-        
-        # Write out our marcxml for each row
-        writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
-
-
-# In[57]:
-
 def formatNumber(n):
     # n is some incoming float
     if int(n) == n:
@@ -144,18 +92,12 @@ def formatNumber(n):
         # n is just a float
         return n
 
-
-# In[58]:
-
 def test_formatNumber():
     testCases = [1000.0, 1234.0, 0.1, 0.001]
     for case in testCases:
         print formatNumber(case)
 
 #test_formatNumber()
-
-
-# In[60]:
 
 def main():
     if DEBUG:
@@ -170,7 +112,7 @@ def main():
     if not DEBUG:
         for i in xrange(len(sys.argv)):
             arg = sys.argv[i]
-            if arg == '--help' or arg == '-h' or             '-m' not in sys.argv or '-o' not in sys.argv or '-i' not in sys.argv:
+            if arg == '--help' or arg == '-h' or             '-m' not in sys.argv or '-o' not in sys.argv or '-i' not in sys.argv or '-s' not in sys.argv:
                 print "Usage: ./excel2marc.py [-h] [-r rowsToIgnore] -m <mapping file> -i <input excel file> -o <output folder>"
                 return
             elif arg == '-r':
@@ -184,7 +126,6 @@ def main():
             elif arg == '-s':
                 sheetName = sys.argv[i+1]
         
-    
     # Get mapping
     mapping = loadMapping(mappingFilename)
     #mapping = loadMapping()
@@ -197,22 +138,7 @@ def main():
             return
         sheet = wb[sheetName]
         handleXLSX(mapping, sheet, outputFolder, rowsToIgnore)
-    elif excelFilename.split(".")[-1] == "xls":
-        try:
-            wb = xlrd.open_workbook(excelFilename)
-        except:
-            print excelFilename + " is not found or not a valid .xls file."
-            return
-        sheet = wb.sheet_by_index(0)
-        handleXLS(mapping, sheet, outputFolder, rowsToIgnore)
-
     else:
-        print "Not a valid filetype. Must be either .xlsx or .xls format."
+        print "Not a valid filetype. Must be .xlsx format."
         
 main()
-
-
-# In[ ]:
-
-
-

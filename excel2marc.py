@@ -132,7 +132,7 @@ def main():
     # Open excel file
     if excelFilename.split(".")[-1] == "xlsx":
         try:
-            wb = openpyxl.load_workbook(filename = excelFilename)
+            wb = openpyxl.load_workbook(filename = excelFilename, read_only=True)
         except:
             print excelFilename + " is not found or not a valid .xlsx file."
             return

@@ -113,7 +113,7 @@ def main():
         for i in xrange(len(sys.argv)):
             arg = sys.argv[i]
             if arg == '--help' or arg == '-h' or             '-m' not in sys.argv or '-o' not in sys.argv or '-i' not in sys.argv or '-s' not in sys.argv:
-                print "Usage: ./excel2marc.py [-h] [-r rowsToIgnore] -m <mapping file> -i <input excel file> -o <output folder>"
+                print "Usage: ./excel2marc.py [-h] [-r rowsToIgnore] -m <mapping file> -i <input excel file> -o <output folder> -s <sheetname>"
                 return
             elif arg == '-r':
                 rowsToIgnore = int(sys.argv[i+1]) # number of rows to ignore at top of spreadsheet

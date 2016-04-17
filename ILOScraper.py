@@ -7,6 +7,8 @@ import os.path
 import sys
 import uuid
 
+DEBUG = False
+
 # Change to ftpdownloads when needed
 SAVE_LOCATION='ilo/'
 
@@ -17,9 +19,12 @@ def getParsedHTML(url):
     return BeautifulSoup(html)
 
 
-# NEEDS CHANGING TO KEEP UP WITH TOTAL PAGE COUNT AT http://www.ilo.org/global/publications/books/lang--en/index.htm
+# This keeps up with the total number of index pages at http://www.ilo.org/global/publications/books/lang--en/index.htm
 frontPage = getParsedHTML("http://www.ilo.org/global/publications/books/lang--en/index.htm")
 pagesToIndex = int(frontPage.find('aside', attrs={'class':'pagination'}).find('strong').string.split(' ')[2])
+
+if DEBUG:
+	pagesToIndex = 1
 
 if not os.path.exists(SAVE_LOCATION+'/.state/'):
 	    os.makedirs(SAVE_LOCATION+'/.state/')
@@ -59,6 +64,12 @@ with open(cleanListFile) as fp:
 with open(errorListFile) as fp:
     errorUrlList = json.load(fp)
 
+if DEBUG:
+	print "INCOMING LIST:"
+	print "\n".join(incomingUrlList)
+	print "CLEAN LIST:"
+	print "\n".join(cleanUrlList)
+
 dirtyUrlList = []
 # If book already scraped, delete
 for i, url in enumerate(incomingUrlList):
@@ -95,17 +106,12 @@ for i, url in enumerate(dirtyUrlList):
         # If there's an error, put it in error list
 		errorUrlList.append(url)
 	else:
-        # if there's no error, put the url on the clean list & save metadata
-		cleanUrlList.append(url)
+        # if there's no error, save metadata
 		bookMetaData.append(metaTemp)
 
 # Save error file
 with open(errorListFile, 'wb') as fp:
     json.dump(errorUrlList, fp)
-
-# Save clean file
-with open(cleanListFile, 'wb') as fp:
-    json.dump(cleanUrlList, fp)
 
 ## DOWNLOAD BOOKS ## 
 
@@ -115,14 +121,17 @@ for data in bookMetaData:
     if "downloadURL" in data:
         data[u'UUID'] = str(uuid.uuid1())
         downloadable.append(data)
+    else:
+	cleanUrlList.append(data[u'originURL'])
 
+# Mapping for writing the marc records
 MARCMapping = {u'UUID':'001', 
-               u'title':'245$a', 
-               u'authors':'100$a', 
-               u'date issued':'260$c',
-               u'desc':'520$a',
-               u'publisher':'260$b',
-               u'reference':'020$a'}
+               u'title':'245a', 
+               u'authors':'100a', 
+               u'date issued':'260c',
+               u'desc':'520a',
+               u'publisher':'260b',
+               u'reference':'020a'}
 
 print "DOWNLOADING " + str(len(downloadable)) + " BOOKS"
 for i, data in enumerate(downloadable):
@@ -134,17 +143,24 @@ for i, data in enumerate(downloadable):
     record = Record()
     for key in data:
         if key in MARCMapping:
-            if(len(MARCMapping[key].split('$')) == 0):
+            if(key == u'UUID'):
                 field = Field(
-                    tag = MARCMapping[key].split('$')[0],
+                    tag = MARCMapping[key],
                     data = data[key])
             else:
-				print key, data[key]
-				field = Field(
-                    tag = MARCMapping[key].split('$')[0],
-                    subfields = [MARCMapping[key].split('$')[1], data[key]],
-                    indicators=['0', '0'])  
+		if DEBUG:
+			print key, data[key]
+		field = Field(
+			tag = MARCMapping[key][:3],
+			subfields = [MARCMapping[key][3], data[key]],
+			indicators=['0', '0'])  
             record.add_field(field)
     writer = XMLWriter(open(downloadLocation + data[u'UUID'] + '.xml', 'wb'))
     writer.write(record)
     writer.close()  # Important!
+    cleanUrlList.append(data[u'originURL'])
+
+
+# Save clean file
+with open(cleanListFile, 'wb') as fp:
+    json.dump(cleanUrlList, fp)

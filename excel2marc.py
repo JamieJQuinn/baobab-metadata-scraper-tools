@@ -1,4 +1,3 @@
-
 from pymarc import Record, Field, XMLWriter
 import os
 import openpyxl
@@ -129,6 +128,11 @@ def main():
     # Get mapping
     mapping = loadMapping(mappingFilename)
     #mapping = loadMapping()
+
+    # Make output dir
+    if not os.path.exists(outputFolder):
+        os.makedirs(outputFolder)
+
     # Open excel file
     if excelFilename.split(".")[-1] == "xlsx":
         try:

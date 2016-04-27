@@ -53,8 +53,7 @@ def getAllUrls(pagesToIndex, getUrlsFromPage, debug=False):
         print '\n'.join(urls)
     return urls
 
-def scrape(saveLocation, MARCMapping, getNumberIndexPages, getUrlsFromPage, getMetadata):
-    debug = True
+def scrape(saveLocation, MARCMapping, getNumberIndexPages, getUrlsFromPage, getMetadata, debug=False):
     if debug:
         print "WARNING: DEBUG"
 

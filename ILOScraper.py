@@ -4,8 +4,6 @@ import os.path
 import json
 import subprocess
 
-DEBUG = False
-
 def getNumberIndexPages_ILO(debug=False):
     if debug:
         return 1

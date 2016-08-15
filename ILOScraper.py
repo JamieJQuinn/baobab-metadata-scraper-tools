@@ -1,52 +1,68 @@
-from pymarc import Record, Field, XMLWriter
-from scraperUtil import getParsedHTML, createJSONFileIfNotPresent, saveBookFileAndMetadata,writeMetadataToMarc, scrape
-import os.path
+from pymarc import Record, Field, XMLWriter, parse_xml_to_array
+from scraperUtil import writeRecordToFile, getParsedHTML, createJSONFileIfNotPresent
 import json
-import subprocess
+import urllib
+import os.path
 
-def getNumberIndexPages_ILO(debug=False):
-    if debug:
-        return 1
-    frontPage = getParsedHTML("http://www.ilo.org/global/publications/books/lang--en/index.htm")
-    pagesToIndex = int(frontPage.find('aside', attrs={'class':'pagination'}).find('strong').string.split(' ')[2])
-    return pagesToIndex
+def getMarcFile(itemStart, itemEnd, xmlFilename):
+    # Gets marcxml file for all items from nItemStart (inclusive) to nItemEnd (not inclusive)
+    print "Getting records for items " + str(itemStart) + " to " +str(itemEnd)
+    url = "http://oldlace.ilo.org/search?jrec="+str(itemStart)+"ln=en&as=1&m1=a&p1=&f1=&op1=a&m2=a&p2=&f2=&op2=a&m3=a&p3=&f3=&year=&year1=&year2=&location=&pl=%2Bedoc%3A%22%25%22+&rm=yt&rg="+str(itemEnd-1)+"&sc=0&of=xm"
+    print "from "+url
+    urllib.urlretrieve(url, xmlFilename)
 
-def getUrlsFromPage_ILO(pageNumber):
-    parsed_html = getParsedHTML("http://www.ilo.org/global/publications/books/lang--en/nextRow--"+str(pageNumber*10)+"/index.htm")
-    liList = parsed_html.body.find('div', attrs={'class':'items-list'}).find_all('li')
-    return ['http://www.ilo.org'+li.a['href'] for li in liList]
+def splitMarcFile(marcFilename, saveLocation):
+    records = parse_xml_to_array(marcFilename)
+    for record in records:
+        print "Saving record for " + record.title()
+        if '856' in record:
+            url = record['856']['u']
+            if url.split('.')[-1] == "pdf":
+                print "Downloading PDF"
+                outputFilename = os.path.join(saveLocation,record['001'].format_field())
+                try:
+                    urllib.urlretrieve(record['856']['u'], outputFilename+'.pdf')
+                except:
+                    print "Error: Cannot download pdf file " + url
+                try:
+                    writeRecordToFile(record, outputFilename+".xml")
+                except:
+                    print "Error: Cannot write record to "+outputFilename+".xml"
+    return len(records)
 
-def getMetadata_ILO(url):
-    metadata={}
-    parsed_html = getParsedHTML(url)
-    # If the returned URL actually has data
-    if parsed_html.find(class_="page-title"):
-        metadata[u"title"] = parsed_html.find(class_="page-title").h1.string
-        metadata[u'desc'] =  parsed_html.find(class_="page-title").p.string
-    # Get publication metadata
-    pubData = parsed_html.find(class_="pub-data").find_all('tr')
-    # Sort metadata into field:data pairs
-    for tr in pubData:
-        metadata[tr.th.string[:-2].lower()] = tr.td.string
-    # Get PDF download link if it exists
-    if (parsed_html.find(id='download')):
-        metadata[u'downloadURL'] = 'http://www.ilo.org' + parsed_html.find(id='download').a['href']
-        uniqueILONumber = metadata[u'downloadURL'].split('/')[-1].split('_')[1].split('.')[0]
-        metadata[u'UUID'] = subprocess.check_output(["/usr/local/baobab/bin/key_to_uuid.sh", uniqueILONumber]).split()[0] 
-    # Record where all this data came from
-    metadata[u'originURL'] = url
-    metadata[u'publisher'] = 'ILO'
-    return metadata
+def getItemCount():
+    return 10
+    url = "http://oldlace.ilo.org/search?ln=en&p=&f=&action_search=Search&edoc=%25&c=ILO+publications&c=Other+publications"
+    html = getParsedHTML(url)
+    try:
+        countString = html.find('td', attrs={'class':'resultStatsPaging'}).strong.string
+    except:
+        print "Error: Cannot parse item count html"
+    return int(countString.replace(',', ''))
 
-# Mapping for writing the marc records
-MARCMapping = {u'UUID':'001', 
-               u'title':'245a', 
-               u'authors':'100a', 
-               u'issue date':'260c',
-               u'publisher':'260b',
-               u'place of publication':'260a',
-               u'language':'041a',
-               u'issn':'022a'
-               }
+def getPageCount(itemsPerPage, itemCount):
+    return int(float(itemCount)/itemsPerPage)+1
 
-scrape('ilo/', MARCMapping, getNumberIndexPages_ILO, getUrlsFromPage_ILO, getMetadata_ILO)
+def getAllMarcFiles(itemsPerPage, saveLocation, stateFile):
+    with open(stateFile, 'r') as fp:
+        state = json.load(fp)
+        lastItemProcessed = state["lastItemProcessed"]
+        print "Last processed item was " + str(lastItemProcessed)
+
+    itemCount = getItemCount()
+    for nItem in xrange(lastItemProcessed+1, itemCount+1, itemsPerPage):
+        xmlFilename = os.path.join(saveLocation,"temp.xml")
+        getMarcFile(nItem, nItem+itemsPerPage, xmlFilename )
+        lastItemProcessed += splitMarcFile(xmlFilename ,saveLocation)
+        with open(stateFile, 'w') as fp:
+            state["lastItemProcessed"] = lastItemProcessed
+            json.dump(state, fp)
+
+def main():
+    itemsPerPage=10
+    saveLocation="ilo"
+    stateFile = os.path.join(saveLocation, ".state.json")
+    createJSONFileIfNotPresent(stateFile, {"lastItemProcessed":0})
+    getAllMarcFiles(itemsPerPage, saveLocation, stateFile)
+
+main()

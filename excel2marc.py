@@ -1,6 +1,7 @@
 from pymarc import Record, Field, XMLWriter
 import os
 import openpyxl
+import re
 import uuid
 import json
 import sys
@@ -27,7 +28,8 @@ def loadMapping(mapFile = ""):
             exit(0)
     
     # Check mapping for errors
-    for key in mapping:
+    for key_entry in mapping:
+        key = key_entry["field"]
         if not (len(key) == 4 or len(key) == 0):
             print "Error: given mapping has keys with incorrect lengths (valid lengths are 0 or 4)"
             return []
@@ -40,11 +42,20 @@ def writeMARCXML(record, filename):
     writer.write(record)
     writer.close()  # Important!
 
-def addField(record, key, sf):
+def addField(record, key_entry, sf):
+    key = key_entry["field"]
     # record is the pymarc record, 
     # key is the key of format '123a' defined in mapping
     # sf is the subfields, i.e. data in the form ['a', 'somedatastring']
+
+    if (sf[1] is None or sf[1] == "None") and "default" in key_entry:
+        print "Using default for " + key
+        sf[1] = key_entry["default"]
+    if "replace" in key_entry:
+        sf[1] = sf[1].replace(key_entry["replace"], key_entry["with"])
     
+    print "Key is " + key + " ; " + sf[1]
+
     # Deal with currency field
     if key[:3] == "365":
         # if field already exists
@@ -68,19 +79,21 @@ def handleXLSX(mapping, sheet, outputFolder, rowsToIgnore):
     for row in sheet.rows[rowsToIgnore:]:
         record = Record()
         # for every key in our map
-        for i, key in enumerate(mapping):
+        for i, key_entry in enumerate(mapping):
+            key = key_entry["field"]
             # if the key isn't empty (i.e. we're not mapping that column)
             if key:
-                addField(record, key, [key[3], unicode(row[i].value)])
+                addField(record, key_entry, [key[3], unicode(row[i].value)])
         if DEBUG:
             print record.title()
-            
-        # Create unique UUID & add to record
-        bookUUID = str(uuid.uuid1())
-        record.add_field(Field(tag='001', data=bookUUID))
+
+	if record.isbn() <> None:
+            # Create unique UUID & add to record
+            bookUUID = str(uuid.uuid1())
+            record.add_field(Field(tag='001', data=bookUUID))
         
-        # Write out our marcxml for each row
-        writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
+            # Write out our marcxml for each row
+            writeMARCXML(record, os.path.join(outputFolder, record.isbn() + '.xml'))
 
 def formatNumber(n):
     # n is some incoming float
@@ -127,7 +140,6 @@ def main():
         
     # Get mapping
     mapping = loadMapping(mappingFilename)
-    #mapping = loadMapping()
 
     # Make output dir
     if not os.path.exists(outputFolder):

@@ -1,25 +1,11 @@
-
-# coding: utf-8
-
-# In[1]:
-
 import urllib2
 import urllib
 from bs4 import BeautifulSoup
+from pymarc import Record, Field, XMLWriter
 import json
 import os.path
 import sys
 import uuid
-
-
-# In[2]:
-
-dirtyListFile = 'WHODirtyUrlList.json'
-cleanListFile = 'WHOCleanUrlList.json'
-metaDataFile =  'WHOMetaDataDict.json'
-
-
-# In[3]:
 
 def getParsedHTML(url):
     url = urllib2.urlopen(url)
@@ -27,121 +13,119 @@ def getParsedHTML(url):
     url.close()
     return BeautifulSoup(html)
 
+def createJSONFileIfNotPresent(filename):
+    if not os.path.isfile(filename):
+        with open(filename, 'w') as fp:
+            json.dump([], fp)
 
-# In[4]:
+numItemsPerPage = 1000
 
-if not os.path.isfile(cleanListFile):
-    with open(cleanListFile, 'w') as fp:
-        json.dump([], fp)
+SAVE_LOCATION='/ftpdownloads/who'
 
-if not os.path.isfile(metaDataFile):
-    with open(metaDataFile, 'w') as fp:
-        json.dump([], fp)
+cleanListFile = SAVE_LOCATION+'/.state/CleanUrlList.json' # List of URLs already processed
+errorListFile = SAVE_LOCATION+'/.state/ErrorUrlList.json' # List of URLs that cause problems
+allUrlListFile = SAVE_LOCATION+'/.state/allUrlList.json' # List of book/report page URLs that we already have (though perhaps not processed)
 
+# Mapping for writing the marc records
+MARCMapping = {u'UUID':'001', 
+               u'title':'245a', 
+               u'authors':'100a', 
+               u'issue date':'260c',
+               u'publisher':'260b',
+	       u'place of publication':'260a',
+	       u'language':'041a',
+	       u'issn':'022a'
+	       }
 
-# In[9]:
+if not os.path.exists(SAVE_LOCATION+'/.state/'):
+	    os.makedirs(SAVE_LOCATION+'/.state/')
 
-# Get HTML of list of pubs from WHO puplication list
-parsed_html = getParsedHTML("http://apps.who.int/iris/browse?type=dateissued&sort_by=2&order=ASC&rpp=159864&etal=0&submit_browse=Update")
+createJSONFileIfNotPresent(cleanListFile)
+createJSONFileIfNotPresent(errorListFile)
+createJSONFileIfNotPresent(allUrlListFile)
 
+# Load existing error lists
+with open(cleanListFile, 'r') as fp:
+	cleanUrlList = json.load(fp)
+with open(errorListFile, 'r') as fp:
+	errorUrlList = json.load(fp)
+with open(allUrlListFile, 'r') as fp:
+	allUrlList = json.load(fp)
 
-# In[10]:
+# This keeps up with the total number of index results 
+frontPage = getParsedHTML("http://apps.who.int/iris/simple-search?query=")
+numItems = int(frontPage.find('div', attrs={'class':'discovery-result-pagination'}).find('div', attrs={'class':'alert-info'}).string.split(' ')[3][:-1])
 
-bookUrlList = []
+numUrlsOnFile = len(allUrlList)
 
-aList = parsed_html.body.find_all('a', attrs={'class':'list-results'})
-
-#print aList
-for a in aList:
-    bookUrlList.append('http://apps.who.int' + a['href'])
-
-# Check scraped list against urls for books that have already been scraped for metadata
-with open(cleanListFile) as fp:
-    cleanUrls = json.load(fp)
-
+## SCRAPE FOR BOOK URLS ##
 dirtyUrlList = []
-# If book already scraped, delete
-for i, url in enumerate(bookUrlList):
-    if url not in cleanUrls:
-        dirtyUrlList.append(url)
+# Scrape url list from ILO puplication list
+print "SCRAPING " + str(int((numItems-numUrlsOnFile)/float(numItemsPerPage))+1) + " PAGES FOR BOOK URLS"
+for i in xrange(numUrlsOnFile, numItems, numItemsPerPage):
+	print str((float(i)/numItems)*100) + "% complete" # Print percentage complete
+	# parse index page
+	parsed_html = getParsedHTML("http://apps.who.int/iris/simple-search?query=&sort_by=score&order=ASC&rpp="+str(numItemsPerPage)+"&etal=0&start="+str(i))
+	# grab all list results
+	aList = parsed_html.find_all('a', attrs={'class':'list-results'})
+	if len(aList) != 1000:
+		print "http://apps.who.int/iris/simple-search?query=&sort_by=score&order=ASC&rpp="+str(numItemsPerPage)+"&etal=0&start="+str(i), len(aList)
+	# add book page urls to list
+	for a in aList:
+		url = 'http://apps.who.int' + a['href']
+		if url not in allUrlList:
+			allUrlList.append(url)
+		# if url not been processed, add to dirty list
+		if url not in cleanUrlList and url not in errorUrlList:
+			dirtyUrlList.append(url)
+	with open(allUrlListFile, 'w') as fp:
+		json.dump(allUrlList, fp)
 
-# Save resulting urls, these must be books we haven't scraped yet
-with open(dirtyListFile, 'wb') as fp:
-    json.dump(dirtyUrlList, fp)
-
-print len(dirtyUrlList)
-
-
-# In[ ]:
-
-# Load list of books we haven't scraped yet
-with open(dirtyListFile) as fp:
-    dirtyUrlList = json.load(fp)
-    
-cleanUrlList = []
-newDirtyUrlList = []
-errorUrlList = []
-
-bookMetaData = []
-
+## DOWNLOAD BOOK + BOOK METADATA ##
+print "SCRAPING " + str(len(dirtyUrlList)) + " URLS FOR BOOKS"
 for i, url in enumerate(dirtyUrlList):
-    print str(float(i)/len(dirtyUrlList) * 100) + '% complete'
-    parsed_html = getParsedHTML(url)
-    metaTemp = {}
-    try:
-        if parsed_html.find(class_="page-title"):
-            metaTemp["title"] = parsed_html.find(class_="page-title").h1.string
-            metaTemp['desc'] =  parsed_html.find(class_="page-title").p.string
-        else:
-            print "No title: " + url
-        pubData = parsed_html.find(class_="pub-data").find_all('tr')
-        for tr in pubData:
-            metaTemp[tr.th.string[:-2].lower()] = tr.td.string
-        if (parsed_html.find(id='download')):
-            metaTemp['downloadURL'] = 'http://www.ilo.org' + parsed_html.find(id='download').a['href']
-        else:
-            print "No Download: " + url
-        metaTemp['originURL'] = url
-    except:
+	print str(float(i)/len(dirtyUrlList)*100) + "% complete"
+	data = {}
+	try:
+		# parse book html page
+		parsed_html = getParsedHTML(url)
+		# Get raw publication metadata
+		trList = parsed_html.find(class_="table itemDisplayTable").find_all('tr')
+		# Sort metadata
+		for tr in trList:
+			data[tr.find(class_="metadataFieldLabel").string[:-2].lower()] = tr.find(class_="metadataFieldValue").string
+		# Record where all this data came from
+		data[u'originURL'] = url
+		# If the pdf link exists, download book and print metadata
+		aPdf = parsed_html.find('td', headers='t0', class_="standard").a
+		if (aPdf):
+			# Get PDF
+			pdfUrl = 'http://apps.who.int' + aPdf['href']
+			urllib.urlretrieve(pdfUrl, SAVE_LOCATION + data['UUID'] + '.' + url.rsplit('.')[-1])
+			# Print metadata in MARCXML
+			record = Record()
+			for key in data:
+				if key in MARCMapping:
+					if(key == u'UUID'):
+						field = Field(
+							tag = MARCMapping[key],
+							data = data[key])
+					else:
+						field = Field(
+							tag = MARCMapping[key][:3],
+							subfields = [MARCMapping[key][3], data[key]],
+							indicators=['0', '0'])  
+					record.add_field(field)
+			writer = XMLWriter(open(SAVE_LOCATION + data[u'UUID'] + '.xml', 'wb'))
+			writer.write(record)
+			writer.close() 
+	except:
         # If there's an error, put it in error list
-        errorUrlList.append(url)
-        print 'dirty: ' + url
-        print "Unexpected error:", sys.exc_info()[0]
-    else:
-        # if there's no error, put the url on the clean list & save metadata
-        cleanUrlList.append(url)
-        bookMetaData.append(metaTemp)
-
-with open(dirtyListFile, 'wb') as fp:
-    json.dump(newDirtyUrlList, fp)
-
-with open(cleanListFile, 'wb') as fp:
-    json.dump(cleanUrlList, fp)
-
-# Load in previous metaData
-with open(metaDataFile) as fp:
-    prevMetaData = json.load(fp)
-# And append new data
-with open(metaDataFile, 'w') as fp:
-    json.dump(bookMetaData + prevMetaData, fp)
-
-
-# In[ ]:
-
-with open(metaDataFile) as fp:
-    prevMetaData = json.load(fp)
-
-downloadable = []
-for data in prevMetaData:
-    if "downloadURL" in data:
-        data['UUID'] = str(uuid.uuid1())
-        downloadable.append(data)
-print len(downloadable)
-
-
-# In[ ]:
-
-for data in downloadable[:3]:
-    url = data['downloadURL']
-    urllib.urlretrieve(url, data['UUID'] + '.' + url.rsplit('.')[-1])
-
+		errorUrlList.append(url)
+		with open(errorListFile, 'wb') as fp:
+			json.dump(errorUrlList, fp)
+	else:
+        # if there's no error, save metadata
+		cleanUrlList.append(url)
+		with open(cleanListFile, 'wb') as fp:
+			json.dump(cleanUrlList, fp)

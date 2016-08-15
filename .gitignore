@@ -1,1 +1,7 @@
 test/testXML/*
+test/templateConversionXML/
+ilo
+who
+err*
+log*
+*.pyc

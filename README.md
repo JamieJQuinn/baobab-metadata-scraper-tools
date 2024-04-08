@@ -1,4 +1,11 @@
-# baobab-scripts
+# Baobab Metadata Scraper Tools
+
+**ARCHIVED 2024-04-08**
+
+This is a collection of tools I wrote for Baobab Ebooks who were developing a curated library of free ebooks and required data scrapers and convertors for associated metadata.
+
+---
+
 A selection of scripts written for Baobab Ebooks
 
 # excel2marc.py
